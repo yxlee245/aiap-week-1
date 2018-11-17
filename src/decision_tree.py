@@ -2,6 +2,7 @@
 
 ### Import libraries ###
 import numpy as np
+import random
 
 ### Define functions ###
 ## Split a dataset based on an attribute and an attribute value
@@ -35,10 +36,19 @@ def gini_index(groups, classes):
     return gini
 
 ## Select the best split point for a dataset
-def get_split(dataset):
+def get_split(dataset, max_features):
     class_values = list(set(row[-1] for row in dataset))
     b_index, b_value, b_score, b_groups = 999, 999, 999, None
-    for index in range(len(dataset[0])-1):
+    feature_size_total = len(dataset[0]) - 1
+    # Sample features for the case of random forest
+    if max_features == 'sqrt':
+        feature_size_sample = int(np.sqrt(feature_size_total))
+        feat_id_list = random.sample(range(feature_size_total),
+                                k=feature_size_sample)
+    else:
+        feature_size_sample = feature_size_total
+        feat_id_list = [feat_id for feat_id in range(feature_size_sample)]
+    for index in feat_id_list:
         for row in dataset:
             groups = test_split(index, row[index], dataset)
             gini = gini_index(groups, class_values)
@@ -52,7 +62,7 @@ def to_terminal(group):
     return max(set(outcomes), key=outcomes.count)
 
 ## Create child splits for a node or make terminal
-def split(node, max_depth, min_size, depth):
+def split(node, max_depth, min_size, depth, max_features):
     left, right = node['groups']
     del(node['groups'])
     # check for a no split
@@ -60,26 +70,26 @@ def split(node, max_depth, min_size, depth):
         node['left'] = node['right'] = to_terminal(left + right)
         return
     # check for max depth
-    if depth >= max_depth:
+    if max_depth is not None and depth >= max_depth:
         node['left'], node['right'] = to_terminal(left), to_terminal(right)
         return
     # process left child
     if len(left) <= min_size:
         node['left'] = to_terminal(left)
     else:
-        node['left'] = get_split(left)
-        split(node['left'], max_depth, min_size, depth+1)
+        node['left'] = get_split(left, max_features)
+        split(node['left'], max_depth, min_size, depth+1, max_features)
     # process right child
     if len(right) <= min_size:
         node['right'] = to_terminal(right)
     else:
-        node['right'] = get_split(right)
-        split(node['right'], max_depth, min_size, depth+1)
+        node['right'] = get_split(right, max_features)
+        split(node['right'], max_depth, min_size, depth+1, max_features)
         
 ## Build a decision tree
-def build_tree(train, max_depth, min_size):
-    root = get_split(train)
-    split(root, max_depth, min_size, 1)
+def build_tree(train, max_depth, min_size, max_features):
+    root = get_split(train, max_features)
+    split(root, max_depth, min_size, 1, max_features)
     return root
 
 ## Print a decision tree
@@ -106,8 +116,9 @@ def predict_single(node, row):
 
 ### Define class DecicisionTree ###
 class DecisionTree():
-    def __init__(self, max_depth, min_size=5):
-        self.max_depth, self.min_size = max_depth, min_size        
+    def __init__(self, max_depth=None, min_size=5, max_features=None):
+        self.max_depth, self.min_size = max_depth, min_size
+        self.max_features = max_features # indicate if sampling of feature is done at each split
                 
     def fit(self, X_train, y_train):
         # Merge X and y
@@ -115,7 +126,8 @@ class DecisionTree():
         # Convert training data to list
         self.data_train = [list(row) for row in data_train]
         # Train model on data
-        self.tree = build_tree(self.data_train, self.max_depth, self.min_size)
+        self.tree = build_tree(self.data_train, self.max_depth, self.min_size,
+                               self.max_features)
         
     def predict(self, X_test):
         # Convert test data to list
@@ -131,20 +143,20 @@ class DecisionTree():
 
 
 ### Testing area ###
-#import pandas as pd
-#dataset_raw = pd.read_csv('data/titanic.csv')
-#dataset_v1 = dataset_raw.copy()[['Sex', 'Fare', 'Pclass', 'Survived']]
-#dataset_v1['Sex'] = (dataset_v1['Sex'] == 'male').astype(int)
-#X = dataset_v1.drop(columns=['Survived']).values
-#y = dataset_v1['Survived'].values
-#from sklearn.model_selection import train_test_split
-#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2,
-#                                                    random_state=2018, stratify=y)
-#dt = DecisionTree(5)
-#dt.fit(X_train, y_train)
-#dt.predict(X_test)
-#from sklearn.metrics import accuracy_score
-#accuracy_score(y_test, dt.predict(X_test))
+import pandas as pd
+dataset_raw = pd.read_csv('data/titanic.csv')
+dataset_v1 = dataset_raw.copy()[['Sex', 'Fare', 'Pclass', 'Survived']]
+dataset_v1['Sex'] = (dataset_v1['Sex'] == 'male').astype(int)
+X = dataset_v1.drop(columns=['Survived']).values
+y = dataset_v1['Survived'].values
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2,
+                                                    random_state=2018, stratify=y)
+dt = DecisionTree(5)
+dt.fit(X_train, y_train)
+dt.predict(X_test)
+from sklearn.metrics import accuracy_score
+accuracy_score(y_test, dt.predict(X_test))
 
 ## Check against sklearn tree
 #from sklearn.tree import DecisionTreeClassifier
