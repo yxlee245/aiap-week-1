@@ -5,6 +5,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split, cross_val_score
+
+from pdpbox import pdp
+
 # Import Data
 dataset_raw = pd.read_csv('data/titanic.csv')
 
@@ -15,22 +20,23 @@ dataset_nonans = dataset_raw.copy()
 dataset_nonans['Age'].fillna(999, inplace=True)
 dataset_nonans['Cabin'].fillna('NA', inplace=True)
 dataset_nonans['Embarked'].fillna('NA', inplace=True)
-X = dataset_nonans.drop(['PassengerId', 'Survived'], axis=1)
-y = dataset_nonans['Survived']
 
 # Encode categorical variables
-from sklearn.preprocessing import LabelEncoder
 label_encoder_name = LabelEncoder()
-X['Name'] = label_encoder_name.fit_transform(X['Name'])
+dataset_nonans['Name'] = label_encoder_name.fit_transform(dataset_nonans['Name'])
 labelencoder_sex = LabelEncoder()
-X['Sex'] = labelencoder_sex.fit_transform(X['Sex'])
+dataset_nonans['Sex'] = labelencoder_sex.fit_transform(dataset_nonans['Sex'])
 labelencoder_ticket = LabelEncoder()
-X['Ticket'] = labelencoder_ticket.fit_transform(X['Ticket'])
+dataset_nonans['Ticket'] = labelencoder_ticket.fit_transform(dataset_nonans['Ticket'])
 labelencoder_cabin = LabelEncoder()
-X['Cabin'] = labelencoder_cabin.fit_transform(X['Cabin'])
+dataset_nonans['Cabin'] = labelencoder_cabin.fit_transform(dataset_nonans['Cabin'])
 labelencoder_embark = LabelEncoder()
-X['Embarked'] = labelencoder_embark.fit_transform(X['Embarked'])
-X_dummies = pd.get_dummies(X, columns=['Embarked'], drop_first=True)
+dataset_nonans['Embarked'] = labelencoder_embark.fit_transform(dataset_nonans['Embarked'])
+dataset_nonans = pd.get_dummies(dataset_nonans, columns=['Embarked'], drop_first=True)
+
+# Split dataset to X and y
+X = dataset_nonans.drop(['PassengerId', 'Survived'], axis=1)
+y = dataset_nonans['Survived']
 
 # Split data into Training and Test sets
 from sklearn.model_selection import train_test_split
@@ -330,7 +336,6 @@ plt.barh(feature_importances.index, feature_importances['importance'])
 plt.gca().invert_yaxis()
 
 # Partial Dependence Plots
-from pdpbox import pdp
 # Plot PDP for Fare
 pdp_fare = pdp.pdp_isolate(model=rf_v2, dataset=X_train.assign(Survived=y_train),
                         model_features=list(X_train.columns),feature='Fare',
@@ -551,6 +556,32 @@ rf_final.fit(X, y)
 
 # Disable subsampling
 reset_rf_samples()
+
+## Cross Validation
+
+# CV for initial model
+X = dataset_nonans.drop(['PassengerId', 'Survived'], axis=1).values
+y = dataset_nonans['Survived'].values
+rf_initial = RandomForestClassifier()
+cv_score_initial = np.mean(cross_val_score(estimator=rf_initial, X=X, y=y, cv=10)) # startified 10-fold cross-validation
+print('CV score of initial model', cv_score_initial)
+
+# CV for final model
+X = dataset_v3[['Fare_Class_Indicator', 'Sex_male', 'Family_Size_Cat',
+                'Age_Cat']].values
+y = dataset_v3['Survived'].values
+set_rf_samples(int(0.4 * len(X_train)))
+rf_tuned = RandomForestClassifier(max_depth=5,
+                                  max_leaf_nodes=70,
+                                  max_features='sqrt',
+                                  n_estimators=300,
+                                  random_state=2018)
+cv_score_tuned = np.mean(cross_val_score(estimator=rf_tuned, X=X, y=y, cv=10))
+print('CV score of tuned model:', cv_score_tuned)
+
+# Disable subsampling
+reset_rf_samples()
+
 
 ### Prediction on Test set ###
 # Import test set
